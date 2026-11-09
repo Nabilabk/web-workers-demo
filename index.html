@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Workers · Démo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+  <!-- ===================== En-tête ===================== -->
+  <header class="entete">
+    <div>
+      <p class="surtitre">Web mobile — Démonstration</p>
+      <h1>Web Workers</h1>
+      <p class="chapo">Le même calcul lourd, exécuté une fois sur le main thread, une fois dans un worker.</p>
+    </div>
+
+    <div class="entete-droite">
+      <!-- État des deux threads, mis à jour par etatThreads() -->
+      <dl class="threads">
+        <div class="thread" id="etat-main" data-etat="libre">
+          <dt>Main thread</dt>
+          <dd><span class="point"></span><strong>Libre</strong></dd>
+        </div>
+        <div class="thread" id="etat-worker" data-etat="inactif">
+          <dt>Worker</dt>
+          <dd><span class="point"></span><strong>Inactif</strong></dd>
+        </div>
+      </dl>
+      <button id="theme" class="bouton-theme" type="button" aria-label="Changer de thème" title="Thème clair / sombre">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <p id="alerte" class="alerte" hidden></p>
+
+  <!-- ===================== 01. Fluidité ===================== -->
+  <section class="panneau" aria-labelledby="titre-fluidite">
+    <div class="section-tete">
+      <h2 id="titre-fluidite"><span class="num">01</span>Fluidité de la page</h2>
+      <p>Si la balle s'arrête, la page est figée.</p>
+    </div>
+
+    <div class="moniteur-corps">
+      <div class="fps-bloc">
+        <strong id="fps" data-niveau="ok">60</strong>
+        <span class="petit-label">images / seconde</span>
+      </div>
+      <div class="scene">
+        <!-- Animée en JavaScript : elle s'arrête si le main thread est bloqué -->
+        <div id="piste" class="piste"><div id="balle" class="balle"></div></div>
+        <canvas id="courbe" aria-label="Courbe des images par seconde"></canvas>
+      </div>
+    </div>
+
+    <div class="moniteur-pied">
+      <dl class="meta">
+        <div><dt class="petit-label">Chrono</dt><dd id="chrono">0.00 s</dd></div>
+        <div><dt class="petit-label">Par image</dt><dd id="temps-image">16.7 ms</dd></div>
+        <div><dt class="petit-label">Cœurs CPU</dt><dd id="coeurs">?</dd></div>
+      </dl>
+      <div class="saisie-bloc">
+        <label for="saisie">Test : écrivez ici pendant le calcul</label>
+        <input id="saisie" class="champ" type="text" placeholder="Tapez quelque chose…" autocomplete="off">
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 02. Charge ===================== -->
+  <section class="reglage" aria-labelledby="titre-charge">
+    <div>
+      <h2 id="titre-charge"><span class="num">02</span>Charge de calcul</h2>
+      <p class="sous-titre">Compter les nombres premiers jusqu'à…</p>
+    </div>
+    <div class="segment" role="radiogroup" aria-labelledby="titre-charge">
+      <button type="button" role="radio" aria-checked="false" data-limite="2000000"><strong>2 M</strong><span>Léger</span></button>
+      <button type="button" role="radio" aria-checked="false" data-limite="5000000"><strong>5 M</strong><span>Moyen</span></button>
+      <button type="button" role="radio" aria-checked="true" data-limite="10000000"><strong>10 M</strong><span>Lourd</span></button>
+    </div>
+  </section>
+
+  <!-- ===================== 03. Les deux versions ===================== -->
+  <section aria-labelledby="titre-duel">
+    <div class="section-tete">
+      <h2 id="titre-duel"><span class="num">03</span>Avant / après</h2>
+      <p>Lancez A, puis B, et comparez.</p>
+    </div>
+
+    <div class="duel">
+      <!-- Carte A : SANS worker -->
+      <article id="carte-sans" class="carte carte-sans">
+        <header class="carte-tete">
+          <div class="carte-titre">
+            <span class="carte-lettre" aria-hidden="true">A</span>
+            <div>
+              <h3>Sans Worker</h3>
+              <p class="carte-desc">Le calcul s'exécute sur le main thread. L'interface doit attendre.</p>
+            </div>
+          </div>
+          <span id="badge-sans" class="badge">Prêt</span>
+        </header>
+
+        <div class="actions">
+          <button id="btn-sans" class="bouton bouton-principal" type="button">
+            Lancer le calcul
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <div class="progression">
+          <div class="piste-barre"><div id="barre-sans" class="barre"></div></div>
+          <span id="pourcent-sans" class="pourcent">0 %</span>
+        </div>
+
+        <div class="resultat">
+          <span class="petit-label">Nombres premiers trouvés</span>
+          <strong id="sans-nb" class="resultat-valeur">—</strong>
+          <span id="sans-charge" class="resultat-charge">Aucun calcul lancé</span>
+        </div>
+
+        <dl class="mesures">
+          <div><dt class="petit-label">Durée</dt><dd id="sans-duree">—</dd></div>
+          <div><dt class="petit-label">Gel max</dt><dd id="sans-gel">—</dd></div>
+          <div><dt class="petit-label">FPS min.</dt><dd id="sans-fps">—</dd></div>
+        </dl>
+
+        <p class="verdict"><span>Interface pendant le calcul</span><span id="sans-ui">—</span></p>
+      </article>
+
+      <!-- Carte B : AVEC worker -->
+      <article id="carte-avec" class="carte carte-avec">
+        <header class="carte-tete">
+          <div class="carte-titre">
+            <span class="carte-lettre" aria-hidden="true">B</span>
+            <div>
+              <h3>Avec Worker</h3>
+              <p class="carte-desc">Le calcul s'exécute dans un thread séparé. L'interface reste libre.</p>
+            </div>
+          </div>
+          <span id="badge-avec" class="badge">Prêt</span>
+        </header>
+
+        <div class="actions">
+          <button id="btn-avec" class="bouton bouton-principal" type="button">
+            Lancer le calcul
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="btn-stop" class="bouton bouton-secondaire" type="button" disabled>
+            Arrêter <code>terminate()</code>
+          </button>
+        </div>
+
+        <div class="progression">
+          <div class="piste-barre"><div id="barre-avec" class="barre"></div></div>
+          <span id="pourcent-avec" class="pourcent">0 %</span>
+        </div>
+
+        <div class="resultat">
+          <span class="petit-label">Nombres premiers trouvés</span>
+          <strong id="avec-nb" class="resultat-valeur">—</strong>
+          <span id="avec-charge" class="resultat-charge">Aucun calcul lancé</span>
+        </div>
+
+        <dl class="mesures">
+          <div><dt class="petit-label">Durée</dt><dd id="avec-duree">—</dd></div>
+          <div><dt class="petit-label">Gel max</dt><dd id="avec-gel">—</dd></div>
+          <div><dt class="petit-label">FPS min.</dt><dd id="avec-fps">—</dd></div>
+        </dl>
+
+        <p class="verdict"><span>Interface pendant le calcul</span><span id="avec-ui">—</span></p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===================== 04. Journal ===================== -->
+  <section aria-labelledby="titre-journal">
+    <div class="section-tete">
+      <h2 id="titre-journal"><span class="num">04</span>Messages échangés</h2>
+      <button id="vider" class="lien" type="button">Effacer</button>
+    </div>
+    <ol id="journal" class="journal"></ol>
+  </section>
+
+</div>
+
+<script src="calcul.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
